@@ -48,6 +48,7 @@ describe("simple_vault", () => {
   let vaultStatePDA: PublicKey;
   let vaultTokenAccountPDA: PublicKey;
   let shareMintPDA: PublicKey;
+  let feeTokenAccount: PublicKey;
 
   // Токен-аккаунты (токен vault) и share-аккаунты пользователей
   const userC = Keypair.generate(); // без карточки
@@ -64,6 +65,7 @@ describe("simple_vault", () => {
         vaultTokenAccount: vaultTokenAccountPDA,
         shareMint: shareMintPDA,
         userTokenAccount: tokenAcc[user.publicKey.toBase58()],
+        feeTokenAccount: feeTokenAccount,
         userShareAccount: shareAcc[user.publicKey.toBase58()],
         user: user.publicKey,
       } as any)
@@ -82,6 +84,13 @@ describe("simple_vault", () => {
     await fundFromAdmin(provider, admin, userC.publicKey);
 
     tokenMint = await createMint(provider.connection, admin, admin.publicKey, null, 6);
+    // Комиссия қабылдайтын admin токен аккаунты
+    feeTokenAccount = await createAccount(
+      provider.connection,
+      admin,
+      tokenMint,
+      admin.publicKey
+    );
 
     [vaultStatePDA] = PublicKey.findProgramAddressSync(
       [Buffer.from("vault"), tokenMint.toBuffer()],
@@ -161,25 +170,32 @@ describe("simple_vault", () => {
     await deposit(userA, 100 * UNIT);
 
     const shares = await getAccount(provider.connection, shareAcc[userA.publicKey.toBase58()]);
-    assert.equal(shares.amount, BigInt(100 * UNIT));
+    assert.equal(shares.amount, BigInt(99 * UNIT));
 
     const card = await program.account.userCard.fetch(cardPda(userA.publicKey));
     assert.equal(card.deposited.toNumber(), 100 * UNIT);
-    assert.equal(card.shares.toNumber(), 100 * UNIT);
+    assert.equal(card.shares.toNumber(), 99 * UNIT);
   });
 
   it("deposit: B вносит 50 токенов → получает 50 shares", async () => {
     await deposit(userB, 50 * UNIT);
 
     const shares = await getAccount(provider.connection, shareAcc[userB.publicKey.toBase58()]);
-    assert.equal(shares.amount, BigInt(50 * UNIT));
+    assert.equal(shares.amount, BigInt(49.5 * UNIT));
 
     const vault = await program.account.vaultState.fetch(vaultStatePDA);
-    assert.equal(vault.totalTokens.toNumber(), 150 * UNIT);
-    assert.equal(vault.totalShares.toNumber(), 150 * UNIT);
+    assert.equal(vault.totalTokens.toNumber(), 148.5 * UNIT);
+    assert.equal(vault.totalShares.toNumber(), 148.5 * UNIT);
 
     const vaultTokens = await getAccount(provider.connection, vaultTokenAccountPDA);
-    assert.equal(vaultTokens.amount, BigInt(150 * UNIT));
+    assert.equal(vaultTokens.amount, BigInt(148.5 * UNIT));
+    // Проверяем комиссию администратора
+    const feeAccount = await getAccount(
+      provider.connection,
+      feeTokenAccount
+    );
+
+    assert.equal(feeAccount.amount, BigInt(1.5 * UNIT));
   });
 
   it("deposit: без карточки — ошибка", async () => {
@@ -200,5 +216,97 @@ describe("simple_vault", () => {
       failed = true;
     }
     assert.isTrue(failed, "нулевой депозит должен быть отклонён");
+  });
+  it("deposit: меньше 1 токена — ошибка", async () => {
+    let failed = false;
+
+    try {
+      await deposit(userA, 0.5 * UNIT);
+    } catch {
+      failed = true;
+    }
+
+    assert.isTrue(
+      failed,
+      "депозит меньше 1 токена должен быть отклонён"
+    );
+  });
+  it("admin pause: останавливает и возобновляет депозиты", async () => {
+    // Admin останавливает Vault
+    await program.methods
+      .setPause(true)
+      .accounts({
+        vaultState: vaultStatePDA,
+        admin: admin.publicKey,
+      } as any)
+      .rpc();
+
+    // Проверяем, что Vault остановлен
+    let vault = await program.account.vaultState.fetch(vaultStatePDA);
+    assert.isTrue(vault.paused);
+
+    // Admin снова включает Vault
+    await program.methods
+      .setPause(false)
+      .accounts({
+        vaultState: vaultStatePDA,
+        admin: admin.publicKey,
+      } as any)
+      .rpc();
+
+    // Проверяем, что Vault снова активен
+    vault = await program.account.vaultState.fetch(vaultStatePDA);
+    assert.isFalse(vault.paused);
+  });
+  it("admin pause: депозит запрещён при paused=true", async () => {
+    // Admin останавливает Vault
+    await program.methods
+      .setPause(true)
+      .accounts({
+        vaultState: vaultStatePDA,
+        admin: admin.publicKey,
+      } as any)
+      .rpc();
+
+    try {
+      // Пользователь пытается внести 10 токенов
+      await deposit(userA, 10 * UNIT);
+
+      assert.fail("Депозит должен быть отклонён");
+    } catch (err: any) {
+      // Проверяем именно ошибку VaultPaused
+      assert.equal(err.error?.errorCode?.code, "VaultPaused");
+    } finally {
+      // Возвращаем Vault в рабочее состояние
+      await program.methods
+        .setPause(false)
+        .accounts({
+          vaultState: vaultStatePDA,
+          admin: admin.publicKey,
+        } as any)
+        .rpc();
+    }
+  });
+  it("admin pause: обычный пользователь не может остановить vault", async () => {
+    let failed = false;
+
+    try {
+      await program.methods
+        .setPause(true)
+        .accounts({
+          vaultState: vaultStatePDA,
+          admin: userA.publicKey,
+        } as any)
+        .signers([userA])
+        .rpc();
+    } catch (err) {
+      failed = true;
+    }
+
+    assert.isTrue(failed, "Обычный пользователь не должен управлять Vault");
+
+    // Проверяем, что Vault остался активным
+    const vault = await program.account.vaultState.fetch(vaultStatePDA);
+    assert.isFalse(vault.paused);
   });
 });
