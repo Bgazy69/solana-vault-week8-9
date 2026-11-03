@@ -167,7 +167,8 @@ describe("simple_vault", () => {
       await mintTo(provider.connection, admin, tokenMint, tokenAcc[key], admin, 1000 * UNIT);
     }
 
-    await deposit(userA, 100 * UNIT);
+    const depositTx = await deposit(userA, 100 * UNIT);
+    console.log("DEPOSIT TX:", depositTx);
 
     const shares = await getAccount(provider.connection, shareAcc[userA.publicKey.toBase58()]);
     assert.equal(shares.amount, BigInt(99 * UNIT));
