@@ -1,5 +1,5 @@
 use anchor_lang::prelude::*;
-use anchor_spl::token::{self, Mint, MintTo, Token, TokenAccount, Transfer};
+use anchor_spl::token::{self, Burn, Mint, MintTo, Token, TokenAccount, Transfer};
 
 declare_id!("7Az9761LH81iJeA9vkPmjEKB27rimnpKqSZBKEieHcuX");
 
@@ -135,6 +135,82 @@ pub mod simple_vault {
             "Deposit: {} tokens -> {} shares (total_tokens={}, total_shares={})",
             amount, shares, vault.total_tokens, vault.total_shares
         );
+        Ok(())
+    }
+
+        /// Vault-тан токендерді қайтарып алу
+    pub fn withdraw(ctx: Context<Withdraw>, shares: u64) -> Result<()> {
+        require!(shares > 0, VaultError::InvalidAmount);
+
+        let vault = &ctx.accounts.vault_state;
+        let card = &ctx.accounts.user_card;
+
+        require!(!vault.paused, VaultError::VaultPaused);
+        require!(card.shares >= shares, VaultError::InsufficientShares);
+        require!(vault.total_shares > 0, VaultError::InvalidAmount);
+
+        // Қайтарылатын токен мөлшерін есептеу
+        let amount = (shares as u128)
+            .checked_mul(vault.total_tokens as u128)
+            .ok_or(VaultError::MathOverflow)?
+            .checked_div(vault.total_shares as u128)
+            .ok_or(VaultError::MathOverflow)? as u64;
+
+        require!(amount > 0, VaultError::InvalidAmount);
+
+        // 1. Пайдаланушының share-токендерін жою
+        token::burn(
+            CpiContext::new(
+                ctx.accounts.token_program.to_account_info(),
+                Burn {
+                    mint: ctx.accounts.share_mint.to_account_info(),
+                    from: ctx.accounts.user_share_account.to_account_info(),
+                    authority: ctx.accounts.user.to_account_info(),
+                },
+            ),
+            shares,
+        )?;
+
+        // 2. Vault PDA арқылы токендерді қайтару
+        let token_mint_key = ctx.accounts.vault_state.token_mint;
+        let bump = [ctx.accounts.vault_state.bump];
+
+        let seeds: &[&[u8]] = &[
+            b"vault",
+            token_mint_key.as_ref(),
+            &bump,
+        ];
+        let signer = &[seeds];
+
+        token::transfer(
+            CpiContext::new_with_signer(
+                ctx.accounts.token_program.to_account_info(),
+                Transfer {
+                    from: ctx.accounts.vault_token_account.to_account_info(),
+                    to: ctx.accounts.user_token_account.to_account_info(),
+                    authority: ctx.accounts.vault_state.to_account_info(),
+                },
+                signer,
+            ),
+            amount,
+        )?;
+
+        // 3. Vault пен UserCard баланстарын жаңарту
+        let vault = &mut ctx.accounts.vault_state;
+        vault.total_tokens = vault.total_tokens
+            .checked_sub(amount)
+            .ok_or(VaultError::MathOverflow)?;
+        vault.total_shares = vault.total_shares
+            .checked_sub(shares)
+            .ok_or(VaultError::MathOverflow)?;
+
+        let card = &mut ctx.accounts.user_card;
+        card.shares = card.shares
+            .checked_sub(shares)
+            .ok_or(VaultError::MathOverflow)?;
+
+        msg!("Withdraw: {} shares -> {} tokens", shares, amount);
+
         Ok(())
     }
         /// Admin Vault-ты тоқтатады немесе қайта қосады
@@ -284,6 +360,59 @@ pub struct Deposit<'info> {
     pub token_program: Program<'info, Token>,
 }
 
+#[derive(Accounts)]
+pub struct Withdraw<'info> {
+    #[account(
+        mut,
+        seeds = [b"vault", vault_state.token_mint.as_ref()],
+        bump = vault_state.bump,
+    )]
+    pub vault_state: Account<'info, VaultState>,
+
+    #[account(
+        mut,
+        seeds = [b"user_card", vault_state.key().as_ref(), user.key().as_ref()],
+        bump = user_card.bump,
+    )]
+    pub user_card: Account<'info, UserCard>,
+
+    #[account(
+        mut,
+        seeds = [b"vault_tokens", vault_state.token_mint.as_ref()],
+        bump,
+        token::mint = vault_state.token_mint,
+        token::authority = vault_state,
+    )]
+    pub vault_token_account: Account<'info, TokenAccount>,
+
+    #[account(
+        mut,
+        seeds = [b"share_mint", vault_state.token_mint.as_ref()],
+        bump,
+        mint::authority = vault_state,
+    )]
+    pub share_mint: Account<'info, Mint>,
+
+    #[account(
+        mut,
+        token::mint = vault_state.token_mint,
+        token::authority = user,
+    )]
+    pub user_token_account: Account<'info, TokenAccount>,
+
+    #[account(
+        mut,
+        token::mint = share_mint,
+        token::authority = user,
+    )]
+    pub user_share_account: Account<'info, TokenAccount>,
+
+    #[account(mut)]
+    pub user: Signer<'info>,
+
+    pub token_program: Program<'info, Token>,
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // State
 // ─────────────────────────────────────────────────────────────────────────────
@@ -338,12 +467,22 @@ impl UserCard {
 pub enum VaultError {
     #[msg("Amount must be greater than zero")]
     ZeroAmount,
+
     #[msg("Minimum deposit is 1 token")]
     DepositTooSmall,
+
     #[msg("Shares would be zero - deposit too small")]
     SharesTooSmall,
+
     #[msg("Math overflow")]
     MathOverflow,
-    #[msg("Vault is paused. Deposits are disabled.")]
+
+    #[msg("Vault is paused. Operations are disabled.")]
     VaultPaused,
+
+    #[msg("Invalid withdrawal amount")]
+    InvalidAmount,
+
+    #[msg("Insufficient shares for withdrawal")]
+    InsufficientShares,
 }
