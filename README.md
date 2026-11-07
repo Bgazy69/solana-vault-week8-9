@@ -118,7 +118,7 @@ JS-зависимости (`@coral-xyz/anchor`, `@solana/web3.js`, `@solana/spl-
 ### 1. Установить зависимости
 
 ```bash
-cd vault-simple
+cd vault-dev
 yarn install
 ```
 
@@ -184,8 +184,9 @@ yarn test
 ✔ admin pause: останавливает и возобновляет депозиты
 ✔ admin pause: депозит запрещён при paused=true
 ✔ admin pause: обычный пользователь не может остановить vault
+✔ withdraw: A 10 shares қайтарады және токен алады
 
-11 passing
+12 passing
 ```
 
 ---
@@ -193,7 +194,7 @@ yarn test
 ## Структура проекта
 
 ```
-vault-simple/
+vault-dev/
 ├── programs/simple_vault/src/lib.rs   # контракт
 ├── tests/vault.ts                     # тесты
 ├── Anchor.toml
@@ -217,7 +218,6 @@ vault-simple/
 
 ---
 
-## Задания для практики
 
 ## Задания для практики
 
@@ -232,7 +232,7 @@ vault-simple/
 
 **Неделя 9:** депозит, выпуск share-токенов, проверки ошибок — реализовано и протестировано.
 
-**Неделя 10:** вывод токенов (`withdraw`) — пока не реализован.
+**Неделя 10:** Withdraw (Burn + Transfer) — реализован, успешно протестирован в Devnet. Все 12 тестов пройдены.
 
 ---
 
@@ -247,7 +247,7 @@ vault-simple/
 
 **Последняя транзакция деплоя:**
 
-https://explorer.solana.com/tx/FNg1K7Zwk7DEpV37sGeYXNooe2FPR4cGgRkYS97WGdVDyjRYu3hseXLVzwrCYFpQTKshibhrbgD3GJn42WHkeFA?cluster=devnet
+https://explorer.solana.com/tx/3UZZiwMwTPQuQqp97uL7a8CH1NyvqW5jaCgXcqECehkjJ9YHt9TSgv6GsULb6ezwNjDB9DrVrozgrdpQ7QRB5dm6?cluster=devnet
 
 **Программа в Solana Explorer:**
 
@@ -273,7 +273,7 @@ https://explorer.solana.com/tx/2M93oQBdfi9hNfYyrqKrNVNvy3gRLvBtCFQdha4uAsXBcFzLp
 
 Программа протестирована в Solana Devnet с помощью Anchor.
 
-**Результат: 11 passing tests.**
+**Результат: 12 passing tests.**
 
 Проверены создание Vault, создание UserCard PDA, депозиты, комиссия, минимальный депозит и управление Admin Pause.
 
@@ -330,5 +330,73 @@ Simple Vault использует PDA (Program Derived Address) для упра�
 - **Token Program** — выполняет переводы SPL-токенов и выпуск share-токенов через CPI.
 
 У каждого пользователя отдельный UserCard PDA. Один пользователь не может создать две карточки для одного Vault.
-```
 
+---
+
+## Week 10 — Withdraw (CPI, Burn & Transfer)
+
+### Мақсаты
+
+10-аптада Vault-тан токендерді қайтарып алу функциясы жасалды.
+
+8–9-аптада пайдаланушы Vault-қа токен салып, share-токендер алатын. Ал 10-аптада пайдаланушы share-токендерін қайтарып, Vault-тағы үлесіне сәйкес SPL-токендерін ала алады.
+
+### Withdraw қалай жұмыс істейді?
+
+1. Пайдаланушы қайтарғысы келетін share мөлшерін көрсетеді.
+2. Бағдарлама пайдаланушыда жеткілікті share бар екенін тексереді.
+3. Қайтарылатын SPL-токен мөлшері есептеледі.
+4. Share-токендер `Burn` арқылы жойылады.
+5. Vault PDA қолтаңбасымен SPL-токендер пайдаланушыға аударылады.
+6. VaultState және UserCard баланстары жаңартылады.
+
+### Withdraw формуласы
+
+`amount = shares * total_tokens / total_shares`
+
+Мысалы, Vault-та 148.5 токен және 148.5 share болса:
+
+- Пайдаланушы 10 share қайтарады.
+- 10 share жойылады.
+- Пайдаланушы 10 SPL-токен алады.
+
+### Қауіпсіздік тексерулері
+
+- Нөлдік мөлшермен withdraw жасауға болмайды.
+- Пайдаланушыда жеткілікті share болуы керек.
+- Vault тоқтатылған (`paused = true`) кезде withdraw орындалмайды.
+- Токендерді аудару үшін Vault PDA қолтаңбасы қолданылады.
+
+### Тестілеу нәтижесі
+
+Команда:
+
+`anchor test --skip-deploy --provider.cluster devnet`
+
+Нәтиже:
+
+**12 passing (46s)**
+
+Оның ішінде жаңа Withdraw тесті сәтті өтті:
+
+`withdraw: A 10 shares қайтарады және токен алады`
+
+Тест пайдаланушының SPL-токен балансы көбейгенін, share-токендері азайғанын және Vault-тағы жалпы share саны жаңарғанын тексерді.
+
+### Solana Devnet
+
+**Program ID:**
+
+`7Az9761LH81iJeA9vkPmjEKB27rimnpKqSZBKEieHcuX`
+
+**Week 10 Deploy TX:**
+
+https://explorer.solana.com/tx/3UZZiwMwTPQuQqp97uL7a8CH1NyvqW5jaCgXcqECehkjJ9YHt9TSgv6GsULb6ezwNjDB9DrVrozgrdpQ7QRB5dm6?cluster=devnet
+
+**Withdraw TX:**
+
+https://explorer.solana.com/tx/2DB8hNDv5bWKpykVW2QMBWU1jPDeJUGBiuzXynPkE4wN13rNupGvDCceKZzqzbmApKxCzNojfhN5kRU2VCu6fdsd?cluster=devnet
+
+### Қорытынды
+
+10-аптада Withdraw функциясы іске асырылды. SPL Token Program арқылы Burn және Transfer операциялары орындалды. Бағдарлама Devnet-ке жарияланып, барлық 12 тест сәтті аяқталды.
