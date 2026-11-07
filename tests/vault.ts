@@ -72,6 +72,21 @@ describe("simple_vault", () => {
       .signers([user])
       .rpc();
 
+    const withdraw = (user: Keypair, shares: number) =>
+    program.methods
+      .withdraw(new anchor.BN(shares))
+      .accounts({
+        vaultState: vaultStatePDA,
+        userCard: cardPda(user.publicKey),
+        vaultTokenAccount: vaultTokenAccountPDA,
+        shareMint: shareMintPDA,
+        userTokenAccount: tokenAcc[user.publicKey.toBase58()],
+        userShareAccount: shareAcc[user.publicKey.toBase58()],
+        user: user.publicKey,
+      } as any)
+      .signers([user])
+      .rpc();
+
   const cardPda = (user: PublicKey) =>
     PublicKey.findProgramAddressSync(
       [Buffer.from("user_card"), vaultStatePDA.toBuffer(), user.toBuffer()],
@@ -309,5 +324,53 @@ describe("simple_vault", () => {
     // Проверяем, что Vault остался активным
     const vault = await program.account.vaultState.fetch(vaultStatePDA);
     assert.isFalse(vault.paused);
+  });
+    it("withdraw: A 10 shares қайтарады және токен алады", async () => {
+    const userKey = userA.publicKey.toBase58();
+
+    // Withdraw алдындағы баланстар
+    const tokenBefore = await getAccount(
+      provider.connection,
+      tokenAcc[userKey]
+    );
+
+    const sharesBefore = await getAccount(
+      provider.connection,
+      shareAcc[userKey]
+    );
+
+    const vaultBefore = await program.account.vaultState.fetch(vaultStatePDA);
+
+    // 10 share қайтарып алу
+    const withdrawTx = await withdraw(userA, 10 * UNIT);
+    console.log("WITHDRAW TX:", withdrawTx);
+
+    // Withdraw кейінгі баланстар
+    const tokenAfter = await getAccount(
+      provider.connection,
+      tokenAcc[userKey]
+    );
+
+    const sharesAfter = await getAccount(
+      provider.connection,
+      shareAcc[userKey]
+    );
+
+    const vaultAfter = await program.account.vaultState.fetch(vaultStatePDA);
+
+    // Пайдаланушының токендері көбейгенін тексеру
+    assert.isTrue(tokenAfter.amount > tokenBefore.amount);
+
+    // 10 share жойылғанын тексеру
+    assert.equal(
+      sharesBefore.amount - sharesAfter.amount,
+      BigInt(10 * UNIT)
+    );
+
+    // Vault-тағы жалпы share саны азаюы керек
+    assert.equal(
+      vaultBefore.totalShares.sub(vaultAfter.totalShares).toString(),
+      String(10 * UNIT)
+    );
   });
 });
