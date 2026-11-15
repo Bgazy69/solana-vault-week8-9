@@ -400,3 +400,67 @@ https://explorer.solana.com/tx/2DB8hNDv5bWKpykVW2QMBWU1jPDeJUGBiuzXynPkE4wN13rNu
 ### Қорытынды
 
 10-аптада Withdraw функциясы іске асырылды. SPL Token Program арқылы Burn және Transfer операциялары орындалды. Бағдарлама Devnet-ке жарияланып, барлық 12 тест сәтті аяқталды.
+
+---
+
+## Week 11 — Raydium CLMM Pool (Devnet)
+
+### Мақсаты
+
+11-аптада Solana Devnet желісінде екі SPL-токен жасалып, Raydium платформасында CLMM (Concentrated Liquidity Market Maker) пулы құрылды.
+
+### Орындалған жұмыстар
+
+1. TOKEN_A және TOKEN_B атты екі тесттік SPL-токен жасалды.
+2. Әр токеннен 1 000 000 дана шығарылды (decimals = 6).
+3. Raydium SDK V2 арқылы CLMM пулы құрылды.
+4. Бастапқы баға 1 TOKEN_A = 1 TOKEN_B болып орнатылды.
+5. Пулдың комиссиясы 0.25% (tick spacing = 60).
+6. Барлық адрестер `devnet-pool.json` файлына сақталды.
+
+### Devnet нәтижелері
+
+**TOKEN_A:**
+`UtVqq5DZpoGX9USfdR6gFLvTKN5mCbssGH2VRfVDY97`
+
+**TOKEN_B:**
+`ptNKTKbfbqVY5JMVThP5BKN4piH5Q6UF1TqBAdbCsSe`
+
+**Raydium CLMM Pool ID:**
+`69hxXoRzyCtNb36DfXwC8RvdUABR4freaX4x7Da8AK2F`
+
+**CLMM Program ID:**
+`DRayAUgENGQBKVaX8owNhgzkEDyoHTGVEGHVJT1E9pfH`
+
+**Network:** Solana Devnet
+
+### Транзакция
+
+[Pool Creation Transaction](https://explorer.solana.com/tx/sdkbvuyk9fmwrBNCCWRTaNKsi4BkJhSLyBmYoSzBC92MqWzQ3W28hcjwQvdkU6YWXBJWKmH29Vw5fmQY2wquDHH?cluster=devnet)
+
+[Raydium CLMM Pool — Solana Explorer](https://explorer.solana.com/address/69hxXoRzyCtNb36DfXwC8RvdUABR4freaX4x7Da8AK2F?cluster=devnet)
+
+### Іске қосу
+
+```bash
+yarn install
+yarn create-pool
+```
+
+**Ескерту:** `yarn create-pool` әр іске қосылған сайын жаңа токендер мен пул жасауға әрекет жасайды. Сондықтан дайын пулды қайта құрудың қажеті жоқ.
+
+### Тексеру нәтижесі
+
+TypeScript тексерісі сәтті өтті:
+
+```bash
+yarn tsc --noEmit
+```
+
+Нәтиже: `Done in 9.52s.`
+
+### Қорытынды
+
+11-аптада екі тесттік SPL-токен және Raydium CLMM пулы сәтті жасалды. Пулдың адресі мен қажетті параметрлері `devnet-pool.json` файлына сақталды.
+
+Бұл файл 12–13-апталардағы тапсырмаларда қолданылады.
