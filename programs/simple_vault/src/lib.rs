@@ -1,11 +1,24 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Burn, Mint, MintTo, Token, TokenAccount, Transfer};
 
+pub mod instructions;
+use instructions::*;
+
 declare_id!("7Az9761LH81iJeA9vkPmjEKB27rimnpKqSZBKEieHcuX");
 
 #[program]
 pub mod simple_vault {
     use super::*;
+
+    /// Admin-only swap through Raydium CLMM.
+    pub fn swap_raydium<'a, 'b, 'c: 'info, 'info>(
+        ctx: Context<'a, 'b, 'c, 'info, SwapRaydium<'info>>,
+        amount_in: u64,
+        min_amount_out: u64,
+        a_to_b: bool,
+    ) -> Result<()> {
+        instructions::swap::handler(ctx, amount_in, min_amount_out, a_to_b)
+    }
 
     /// Создать vault для конкретного SPL-токена.
     /// Создаёт: VaultState PDA, vault_token_account PDA, share_mint PDA.
@@ -219,6 +232,49 @@ pub mod simple_vault {
 
         msg!("Vault paused: {}", paused);
         Ok(())
+    }
+
+    /// Выводит всю ликвидность обратно в vault, сжигает position NFT.
+    pub fn close_raydium_position<'a, 'b, 'c: 'info, 'info>(
+        ctx: Context<'a, 'b, 'c, 'info, CloseRaydiumPosition<'info>>,
+        amount_0_min: u64,
+        amount_1_min: u64,
+    ) -> Result<()> {
+        instructions::close_position::handler(ctx, amount_0_min, amount_1_min)
+    }
+
+    /// Собирает комиссии CLMM без удаления ликвидности и закрытия NFT.
+    pub fn collect_raydium_fees<'a, 'b, 'c: 'info, 'info>(
+        ctx: Context<'a, 'b, 'c, 'info, CollectRaydiumFees<'info>>,
+        amount_0_min: u64,
+        amount_1_min: u64,
+    ) -> Result<()> {
+        instructions::collect_fees::handler(ctx, amount_0_min, amount_1_min)
+    }
+
+    /// Открыть позицию в Raydium CLMM через CPI.
+    /// Vault PDA = владелец NFT позиции.
+    /// Токены берутся из vault_token_account (MyToken) + vault_wsol_account (wSOL).
+    pub fn open_raydium_position<'a, 'b, 'c: 'info, 'info>(
+        ctx: Context<'a, 'b, 'c, 'info, OpenRaydiumPosition<'info>>,
+        tick_lower_index: i32,
+        tick_upper_index: i32,
+        tick_array_lower_start_index: i32,
+        tick_array_upper_start_index: i32,
+        liquidity: u128,
+        amount_0_max: u64,
+        amount_1_max: u64,
+    ) -> Result<()> {
+        instructions::open_position::handler(
+            ctx,
+            tick_lower_index,
+            tick_upper_index,
+            tick_array_lower_start_index,
+            tick_array_upper_start_index,
+            liquidity,
+            amount_0_max,
+            amount_1_max,
+        )
     }
 }
 
@@ -485,4 +541,13 @@ pub enum VaultError {
 
     #[msg("Insufficient shares for withdrawal")]
     InsufficientShares,
+
+    #[msg("Unauthorized access")]
+    Unauthorized,
+
+    #[msg("Invalid tick range")]
+    InvalidTickRange,
+
+    #[msg("Pool token mints do not match vault tokens")]
+    InvalidPoolMint,
 }
