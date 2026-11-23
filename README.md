@@ -1,13 +1,13 @@
 # Simple Vault — практика Anchor
 
-Учебный контракт на Anchor 0.31.1 (Solana). Сейчас проект включает четыре основные функции:
+Учебный контракт на Anchor 0.31.1 (Solana). Проект включает Vault, депозит/вывод токенов и интеграцию с Raydium CLMM:
 
 1. **Vault создан** — админ создаёт vault для SPL-токена. *(неделя 8)*
 2. **У каждого пользователя своя «карточка»** — личный аккаунт (PDA) внутри vault. *(неделя 8)*
 3. **Депозит и share-токены** — пользователь вносит токены и получает share-токены. *(неделя 9)*
 4. **Вывод токенов** — пользователь сжигает shares и получает свою долю SPL-токенов. *(неделя 10)*
 
-Контракт поддерживает депозит и вывод токенов. Raydium CLMM Pool создан отдельно в Devnet; интеграция с Vault пока не реализована.
+Контракт поддерживает депозит, вывод токенов и CPI-интеграцию с Raydium CLMM. Open Position, Collect Fees, Close Position и ручной Rebalance успешно проверены в Devnet.
 
 ---
 
@@ -241,7 +241,9 @@ vault-dev/
 
 **Неделя 11:** Raydium CLMM Pool — созданы два SPL-токена, настроен пул с начальной ценой 1:1 и комиссией 0.25%. Пул успешно создан в Devnet, адреса сохранены в `devnet-pool.json`.
 
-**Недели 12–13:** дальнейшая работа с Raydium CLMM Pool — предстоит выполнить.
+**Неделя 12:** реализована инструкция Swap CPI через Raydium CLMM; успешный swap в Devnet пока не подтверждён.
+
+**Неделя 13:** Open Position, Collect Fees, Close Position и ручной Rebalance успешно выполнены в Devnet.
 
 ---
 
@@ -256,7 +258,7 @@ vault-dev/
 
 **Последняя транзакция деплоя:**
 
-https://explorer.solana.com/tx/3UZZiwMwTPQuQqp97uL7a8CH1NyvqW5jaCgXcqECehkjJ9YHt9TSgv6GsULb6ezwNjDB9DrVrozgrdpQ7QRB5dm6?cluster=devnet
+https://explorer.solana.com/tx/4KGFfP6UkhsZKLRkAUp7iRTGGeX2vzYfHqA9KwoS5cosk3knMLmkEj3fTum57MezkQEyYYeSh4rtNBTxGbdSxyVp?cluster=devnet
 
 **Программа в Solana Explorer:**
 
@@ -473,3 +475,99 @@ yarn tsc --noEmit
 11-аптада екі тесттік SPL-токен және Raydium CLMM пулы сәтті жасалды. Пулдың адресі мен қажетті параметрлері `devnet-pool.json` файлына сақталды.
 
 Бұл файл 12–13-апталардағы тапсырмаларда қолданылады.
+
+---
+
+## Week 12 — Raydium CLMM Swap CPI
+
+### Мақсаты
+
+Vault программасын Raydium CLMM пулымен CPI арқылы байланыстыру және токен айырбастау инструкциясын жасау.
+
+### Орындалған жұмыстар
+
+- `swap_raydium` инструкциясы Rust тілінде жазылды.
+- Raydium CLMM `swap_v2` CPI шақыруы қосылды.
+- Vault PDA арқылы қол қою механизмі қолданылды.
+- Программа Anchor көмегімен компиляцияланды және Devnet-ке орналастырылды.
+
+**Статус:** Swap CPI коды дайын, бірақ нақты swap транзакциясының сәтті орындалуы әлі расталмаған.
+
+## Week 13 — Raydium CLMM Position Management
+
+### Мақсаты
+
+Vault арқылы Raydium CLMM позицияларын басқару: ашу, комиссия жинау, жабу және қайта теңгерімдеу.
+
+### 1. Open Position
+
+`open_raydium_position` инструкциясы Vault PDA атынан CLMM позициясын ашады.
+
+- Бастапқы tick диапазоны: `-5040 → +5040`
+- Бастапқы liquidity: `44894291`
+- Position NFT Vault PDA бақылауында сақталады.
+
+[Open Position TX](https://explorer.solana.com/tx/4Xe61CL9d9SG7NtFQSqsyxgMeR2oXhXMqu49uwrPHJ3vdrjBgQqnBmvXXetsxRoMgddj31crCNhQBSvAgYHRhb27?cluster=devnet)
+
+### 2. Collect Fees
+
+`collect_raydium_fees` инструкциясы Raydium `DecreaseLiquidityV2` CPI шақыруын `liquidity = 0` параметрімен орындайды.
+
+- Devnet транзакциясы сәтті расталды.
+- Position аккаунты сақталды.
+- Liquidity `44894291` мәнінде қалғаны on-chain тексерілді.
+- Нақты оң мөлшердегі комиссияның жиналғаны әзірге расталмаған.
+
+[Collect Fees TX](https://explorer.solana.com/tx/5s3wf2EL1MdpyJR3t8bzj9UgQD7XJXJa5cXG5sThyjUa39o5ZyNhRhPPBDZBuqzqYxbFbGx8DrSJ7wKqPeDvF9Mg?cluster=devnet)
+
+### 3. Close Position
+
+`close_raydium_position` инструкциясы:
+
+1. `DecreaseLiquidityV2` арқылы ликвидтілікті шығарады.
+2. `ClosePosition` арқылы позицияны жабады.
+
+[Close Position TX](https://explorer.solana.com/tx/5dSdD5kQ7wjSuc2VpDM38FMiW3qGCLUo3wF9fxTdFo4vxfWXzz9cWm2Ho1XnUSof1SkTbn2xKKD5zgsxLWB59nAb?cluster=devnet)
+
+### 4. Rebalance
+
+Rebalance қолмен екі транзакция арқылы орындалды: ескі позиция жабылып, жаңа диапазонмен позиция ашылды.
+
+| Параметр | Бұрын | Кейін |
+|---|---|---|
+| Tick Lower | -5040 | -2520 |
+| Tick Upper | +5040 | +2520 |
+| Liquidity | 44894291 | 84474014 |
+| Position | Closed | Open |
+
+Жаңа позицияның tick және liquidity параметрлері Solana Devnet аккаунтынан оқылып, тексерілді.
+
+[Rebalance Open TX](https://explorer.solana.com/tx/5WvebNzYAfxzgG4xwcmaZi1ffA2Xtox9Wmpe7HcXcA2Dtvjc34ahJXkkZPaSF9kCscDGvbZucgQ1kzFML2H2NJC8?cluster=devnet)
+
+**Ескерту:** Бұл автоматты ребаланс емес, екі бөлек транзакция арқылы орындалған демонстрациялық процесс.
+
+### Week 12–13 скрипттері
+
+| Файл | Мақсаты |
+|---|---|
+| `scripts/open-position.ts` | CLMM позициясын ашу |
+| `scripts/collect-fees.ts` | Комиссия жинау |
+| `scripts/close-position.ts` | Позицияны жабу |
+| `scripts/rebalance-open.ts` | Жаңа диапазонмен позиция ашу |
+| `scripts/simulate-position.ts` | Позицияға қатысты симуляция |
+| `programs/simple_vault/src/instructions/swap.rs` | Swap CPI |
+| `programs/simple_vault/src/instructions/open_position.rs` | Open Position CPI |
+| `programs/simple_vault/src/instructions/collect_fees.rs` | Collect Fees CPI |
+| `programs/simple_vault/src/instructions/close_position.rs` | Close Position CPI |
+
+### Devnet
+
+**Vault Program ID:**
+
+`7Az9761LH81iJeA9vkPmjEKB27rimnpKqSZBKEieHcuX`
+
+**Raydium CLMM Pool:**
+
+`69hxXoRzyCtNb36DfXwC8RvdUABR4freaX4x7Da8AK2F`
+
+**Қорытынды:** Week 13 бойынша позицияны ашу, комиссия жинау CPI, жабу және қолмен rebalance Devnet-те сәтті тексерілді. Week 12 Swap CPI үшін нақты swap тесті әлі қажет.
