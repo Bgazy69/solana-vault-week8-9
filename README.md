@@ -570,4 +570,4 @@ Rebalance қолмен екі транзакция арқылы орындалд
 
 `69hxXoRzyCtNb36DfXwC8RvdUABR4freaX4x7Da8AK2F`
 
-**Қорытынды:** Week 13 бойынша позицияны ашу, комиссия жинау CPI, жабу және қолмен rebalance Devnet-те сәтті тексерілді. Week 12 Swap CPI үшін нақты swap тесті әлі қажет.
+**Қорытынды:** Week 12–13 аясында Vault пен Raydium CLMM арасындағы CPI интеграциясы жасалды. Swap CPI инструкциясы іске асырылып, программа Devnet-ке орналастырылды. Open Position, Collect Fees CPI, Close Position және қолмен Rebalance операциялары Devnet желісінде сәтті орындалды.
